@@ -1,0 +1,70 @@
+# Báo cáo cá nhân — Day 01: Lọc tin nhắn rác bằng ML, DL, Embedding và LLM
+
+- **MSSV:** 2A202603949
+- **Họ và tên:** Lê Tuấn Đạt
+- **SEED:** 4970
+
+## 1. Bằng chứng
+
+| Tệp | Có? |
+| --- | --- |
+| [`day01_lab.ipynb`](day01_lab.ipynb) — notebook đã chạy, còn output | ☑ |
+| [`lab1_report.json`](lab1_report.json) — do ô "Báo cáo cuối" sinh ra | ☑ |
+| [`hand_calc.jpg`](hand_calc.jpg) — ảnh tính tay có các bước | ☑ |
+
+## 2. Kết quả chính
+
+| Phương án | F1 (test) | F1 (SUB 40) | p95 (ms/tin) | USD / 1k tin |
+|---|---|---|---|---|
+| 1. BoW + LogReg (tự code) | 0.884 | 0.889 | 0.12 ms | 0.0 |
+| 2. BoW + MLP (deep learning) | 0.914 | 0.919 | 0.34 ms | 0.0 |
+| 3a. Encoder (MiniLM) + kNN | 0.911 | 1.000 | 60.18 ms | 0.0 |
+| 3b. Encoder (MiniLM) + LogReg | 0.937 | 0.974 | 32.48 ms | 0.0 |
+| 3c. Encoder (MiniLM) + MLP head | 0.922 | 0.974 | 31.61 ms | 0.0 |
+
+## 3. Dự đoán và thực tế
+
+1. **`ml_f1` (Phần 1):** Đoán F1 ~0.90-0.93, thực tế đạt 0.884. Lệch nhẹ do tập test có một số tin nhắn spam ngụy trang né từ khoá khiến mô hình BoW bị bỏ lọt (Recall = 0.792 kéo F1 xuống).
+2. **`dl_curve` (Phần 2):** Đoán sau 5-10 epoch val loss sẽ tăng ngược lại do overfit. Thực tế epoch tối ưu nhất là epoch 8, sau đó train loss tiếp tục giảm sát 0 nhưng val loss đi ngang và bắt đầu dao động tăng nhẹ, hoàn toàn khớp hiện tượng overfitting.
+3. **`hard_eval` (Phần 5):** Đoán F1 tụt xuống ~0.50-0.70 trên 50 case khó. Thực tế F1 tụt thảm hại đúng như dự đoán vì 50 case này chứa nhiều bẫy out-of-distribution (natural_spam, prompt injection).
+
+## 4. Phân tích 50 case khó
+
+- **Model tụt nhiều nhất:** BoW + LogReg (F1 từ 0.884 tụt xuống ~0.50), tụt mạnh nhất ở 2 nhóm `natural_spam` và `obfuscation`.
+- **Case 1 (natural_spam):** Tin nhắn rủ rê kiếm tiền hoặc lừa đảo viết bằng giọng điệu bạn bè tự nhiên không hề chứa các từ khóa quen thuộc như 'free', 'win', 'call'. BoW nhìn vào không thấy từ nào trong từ điển 2.000 từ nên đoán là Ham (False Negative).
+- **Case 2 (ham_looks_spam):** Tin nhắn "Mum says the prize for the school raffle is a cake lol" là tin thường nhưng có từ "prize". BoW phạt nặng trọng số từ này khiến tin bị gán nhãn sai thành Spam (False Positive).
+
+## 5. Thử thách cá nhân
+
+- **Đề bài (Đề #3 theo SEED 4970):** *"DL · Đổi lớp ẩn MLP thành 4 và 512 nơ-ron. Báo số tham số, F1 test, thời gian train. Khi nào nên chọn mạng nhỏ?"*
+- **Kết quả thực nghiệm:**
+  - Ẩn h = 4: Số tham số ~8.077, thời gian train ~0.8s, F1 test đạt 0.892 (giảm nhẹ so với h=64 do dung lượng mạng quá nhỏ).
+  - Ẩn h = 512: Số tham số vọt lên 1.025.537 tham số, thời gian train ~4.5s, F1 test đạt 0.912 (không tăng thêm so với h=64 nhưng tốn tài nguyên gấp 8 lần và dễ overfit).
+- **Giải thích & Kết luận:** Nên chọn mạng nhỏ khi cần triển khai trên phần cứng biên (Edge/Mobile), yêu cầu độ trễ cực thấp (p95 siêu nhỏ), hoặc khi tập dữ liệu nhỏ để tránh overfit.
+
+## 6. Phương án cho sản phẩm thật
+
+- Với yêu cầu hệ thống xử lý **10 triệu SMS/ngày (~116 tin/s)** và **p95 < 50 ms/tin**:
+- **Phương án lựa chọn:** **3b. Encoder (MiniLM) + LogReg**.
+- **Lý do & Số liệu thực chứng:**
+  - Đạt chuẩn SLA: p95 = **32.48 ms** (< 50 ms).
+  - Chất lượng cao nhất: F1 test = **0.937**, F1 SUB = **0.974**.
+  - Chi phí: **0 USD** (chạy local, không phụ thuộc API bên ngoài).
+- **Đánh đổi:** Chấp nhận thời gian chuẩn bị encode ban đầu lâu hơn BoW (~108s), nhưng khi suy luận từng tin thì hoàn toàn đáp ứng thời gian thực.
+- Không chọn LLM vì 10 triệu tin/ngày sẽ tốn hơn **$3.150/tháng** chi phí API và độ trễ p95 > 500ms vi phạm nghiêm trọng SLA.
+
+## 7. AI log và điều đã học
+
+### AI log
+| Phần | Bạn hỏi AI gì (prompt) | AI trả lời/viết gì | Bạn đã sửa / kiểm chứng gì |
+|---|---|---|---|
+| Phần 0 | Giải thích ý nghĩa data leakage | AI giải thích nguyên lý lộ đề thi | Tự đối chiếu với tập tin trùng lặp |
+| Phần 1 | Công thức Gradient Descent cho LogReg | Đạo hàm X.T @ error / n | Kiểm tra dấu trừ cập nhật trọng số |
+| Phần 2 | 5 dòng PyTorch chuẩn | zero_grad, forward, loss, backward, step | Kiểm tra lại cơ chế tích luỹ gradient |
+| Phần 3 | Thuật toán kNN và chuẩn hoá vector | Chuẩn hoá L2 norm trước khi tính cosine | Tự kiểm chứng hàm top_k_similar |
+| Phần 4 | Lỗi bắt nhãn parse_label | Cảnh báo từ 'not spam' chứa 'spam' | Kiểm tra regex nhãn phủ định |
+
+### Điều đã học hôm nay
+1. Hiểu bản chất 4 thế hệ AI: từ người tự chọn feature (BoW), mạng tự học tổ hợp (MLP), mượn vector ngữ nghĩa (MiniLM) đến mô hình ngôn ngữ lớn (LLM).
+2. Nhận thức rõ Accuracy là số đo đánh lừa trên dữ liệu mất cân bằng lớp; bắt buộc phải đánh giá đa chiều qua Precision, Recall, F1 và độ trễ p95.
+3. Nhận ra tầm quan trọng của việc kiểm thử độ bền (Stress test) trên các mẫu Out-of-Distribution thay vì chỉ tin tưởng vào điểm số trên tập test thông thường.
